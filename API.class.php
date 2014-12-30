@@ -22,19 +22,19 @@ abstract class API {
      * case, an integer ID for the resource. eg: /<endpoint>/<verb>/<arg0>/<arg1>
      * or /<endpoint>/<arg0>
      */
-    protected $args = Array();
+    protected $args = array();
     /**
      * Property: file
      * Stores the input of the PUT request
      */
-    protected $file = Null;
+    protected $file = null;
 
     /**
      * Constructor: __construct
      * Allow for CORS, assemble and pre-process the data
      */
     public function __construct($request) {
-        header("Access-Control-Allow-Orgin: *");
+        header("Access-Control-Allow-Origin: *");
         header("Access-Control-Allow-Methods: *");
         header("Content-Type: application/json");
 
@@ -83,12 +83,12 @@ abstract class API {
     }
 
     private function _response($data, $status = 200) {
-        header("HTTP/1.1 " . $status . " " . $this->_requestStatus($status));
+        header($_SERVER["SERVER_PROTOCOL"] . " " . $status . " " . $this->_requestStatus($status));
         return json_encode($data);
     }
 
     private function _cleanInputs($data) {
-        $clean_input = Array();
+        $clean_input = array();
         if (is_array($data)) {
             foreach ($data as $k => $v) {
                 $clean_input[$k] = $this->_cleanInputs($v);
@@ -101,13 +101,13 @@ abstract class API {
     }
 
     private function _requestStatus($code) {
-        $status = array(  
+        $status = array(
             200 => 'OK',
-            404 => 'Not Found',   
+            404 => 'Not Found',
             405 => 'Method Not Allowed',
             500 => 'Internal Server Error',
-        ); 
-        return (($status[$code]) ? $status[$code] : $status[500]); 
+        );
+        return (($status[$code]) ? $status[$code] : $status[500]);
     }
 }
 ?>
