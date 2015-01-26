@@ -25,9 +25,14 @@ abstract class API {
     protected $args = array();
     /**
      * Property: file
-     * Stores the input of the PUT request
+     * Stores the input of the PUT or POST request
      */
     protected $file = null;
+    /**
+     * Property: type
+     * Stores the content type of the input
+     */
+    protected $type = '';
 
     /**
      * Constructor: __construct
@@ -58,17 +63,34 @@ abstract class API {
         }
 
         switch($this->method) {
-        case 'DELETE':
-        case 'POST':
+        case 'POST':    // Create
+            $this->file = file_get_contents("php://input");
+            if (strlen($this->file) > 0) {
+                $this->type = $_SERVER['CONTENT_TYPE'];
+            }
+            $this->request = array_merge($this->_cleanInputs($_GET), $this->_cleanInputs($_POST));
+            break;
+        case 'GET':     // Read
+            $this->request = $this->_cleanInputs($_GET);
+            break;
+        case 'PUT':     // Update
+            $this->file = file_get_contents("php://input");
+            if (strlen($this->file) > 0) {
+                $this->type = $_SERVER['CONTENT_TYPE'];
+            }
+            $this->request = $this->_cleanInputs($_GET);
+            break;
+        case 'DELETE':  // Delete
             $this->request = $this->_cleanInputs($_POST);
             break;
-        case 'GET':
-            $this->request = $this->_cleanInputs($_GET);
+        // PATCH
+        case 'OPTIONS':
+            header('Allow: GET,HEAD,POST,OPTIONS');
+            $this->_response(null, 200);
             break;
-        case 'PUT':
-            $this->request = $this->_cleanInputs($_GET);
-            $this->file = file_get_contents("php://input");
-            break;
+        // HEAD
+        // TRACE
+        // CONNECT
         default:
             $this->_response('Invalid Method', 405);
             break;
@@ -77,14 +99,30 @@ abstract class API {
 
     public function processAPI() {
         if ((int)method_exists($this, $this->endpoint) > 0) {
-            return $this->_response($this->{$this->endpoint}($this->args));
+            try {
+                return $this->_response($this->{$this->endpoint}($this->args));
+            }
+            catch (Exception $e) {
+                //var_dump($e->getMessage()); exit;
+                // http://tools.ietf.org/html/draft-pbryan-http-json-resource-01
+                return $this->_response(
+                    array(
+                        'error' => ($e->getCode() ? $e->getCode() : 500),
+                        'reason' => ($e->getMessage() ? $e->getMessage() : $this->_requestStatus($e->getCode()))
+                    ),
+                    ($e->getCode() ? $e->getCode() : 500)
+                );
+            }
         }
         return $this->_response("No Endpoint: $this->endpoint", 404);
     }
 
-    private function _response($data, $status = 200) {
-        header($_SERVER["SERVER_PROTOCOL"] . " " . $status . " " . $this->_requestStatus($status));
-        return json_encode($data);
+    protected function _response($data, $status = 200) {
+        if (http_response_code() == 200) {
+        //if ((!isset($GLOBALS['http_response_code'])) || ($GLOBALS['http_response_code'] == 200)) {
+            header($_SERVER["SERVER_PROTOCOL"] . " " . $status . " " . $this->_requestStatus($status));
+        }
+        return json_encode($data, JSON_UNESCAPED_SLASHES/*|JSON_NUMERIC_CHECK*/|JSON_PRETTY_PRINT);
     }
 
     private function _cleanInputs($data) {
@@ -103,11 +141,21 @@ abstract class API {
     private function _requestStatus($code) {
         $status = array(
             200 => 'OK',
-            404 => 'Not Found',
-            405 => 'Method Not Allowed',
-            500 => 'Internal Server Error',
+            201 => 'Created',                       // POST/PUT resulted in a new resource, MUST include Location header
+            202 => 'Accepted',                      // request accepted for processing but not yet completed, might be disallowed later
+            204 => 'No Content',                    // DELETE/PUT fulfilled, MUST NOT include message-body
+            304 => 'Not Modified',                  // If-Modified-Since, MUST include Date header
+            400 => 'Bad Request',                   // malformed syntax
+            403 => 'Forbidden',                     // unauthorized
+            404 => 'Not Found',                     // request URI does not exist
+            405 => 'Method Not Allowed',            // HTTP method unavailable for URI, MUST include Allow header
+            415 => 'Unsupported Media Type',        // unacceptable request payload format for resource and/or method
+            426 => 'Upgrade Required',
+            451 => 'Unavailable For Legal Reasons', // REDACTED
+            500 => 'Internal Server Error',         // all other errors
+            501 => 'Not Implemented'                // (currently) unsupported request method
         );
-        return (($status[$code]) ? $status[$code] : $status[500]);
+        return (isset($status[$code]) ? $status[$code] : $status[500]);
     }
 }
 ?>
